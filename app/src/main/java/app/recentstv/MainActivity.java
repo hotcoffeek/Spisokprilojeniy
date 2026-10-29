@@ -5,8 +5,13 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.os.Handler;
+import android.os.Looper;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -59,6 +64,8 @@ public class MainActivity extends Activity {
     private int lastFocusIndex = 0;
     private ValueAnimator scrollAnim;
     private boolean leaving = false;
+    /** Приложение, открытое под списком (его нельзя убить, пока оно на экране). */
+    private String behindPkg;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,6 +90,7 @@ public class MainActivity extends Activity {
         permBox.setVisibility(View.GONE);
         scroll.setVisibility(View.VISIBLE);
         closeAllBtn.setVisibility(View.VISIBLE);
+        behindPkg = RecentsRepo.behindPackage(this);
         entries.clear();
         entries.addAll(RecentsRepo.load(this));
         if (entries.isEmpty()) {
@@ -203,7 +211,10 @@ public class MainActivity extends Activity {
             return;
         }
         entry.closing = true;
-        RecentsRepo.kill(this, entry.pkg);
+        final boolean behind = entry.pkg.equals(behindPkg);
+        if (!behind) {
+            RecentsRepo.kill(this, entry.pkg);
+        }
         RecentsRepo.dismiss(this, entry.pkg);
 
         // Фокус сразу уходит на соседнюю плитку, чтобы можно было закрывать подряд.
@@ -213,6 +224,24 @@ public class MainActivity extends Activity {
         }
 
         flyAway(tile, 0);
+
+        if (behind) {
+            // Приложение открыто под списком: сначала уходим на главный экран, потом убиваем.
+            behindPkg = null;
+            final boolean comeBack = next != null;
+            scroll.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    List<String> one = new ArrayList<>();
+                    one.add(entry.pkg);
+                    goHomeThenKill(one, comeBack);
+                    if (!comeBack) {
+                        leave();
+                    }
+                }
+            }, 260);
+            return;
+        }
 
         if (next == null) {
             // Это была последняя плитка — после улёта сразу на главный.
@@ -262,6 +291,7 @@ public class MainActivity extends Activity {
             return;
         }
         long delay = 0;
+        final List<String> closedPkgs = new ArrayList<>();
         for (int i = 0; i < row.getChildCount(); i++) {
             View t = row.getChildAt(i);
             AppEntry e = (AppEntry) t.getTag();
@@ -271,6 +301,7 @@ public class MainActivity extends Activity {
             e.closing = true;
             RecentsRepo.kill(this, e.pkg);
             RecentsRepo.dismiss(this, e.pkg);
+            closedPkgs.add(e.pkg);
             flyAway(t, delay);
             delay += 45;
         }
@@ -279,9 +310,65 @@ public class MainActivity extends Activity {
             public void run() {
                 row.removeAllViews();
                 entries.clear();
+                if (behindPkg != null && closedPkgs.contains(behindPkg)) {
+                    // Одно из приложений открыто под списком — его убиваем уже с главного экрана.
+                    goHomeThenKill(closedPkgs, false);
+                }
                 leave();
             }
         }, delay + 300L);
+    }
+
+    /** Уходит на главный экран, затем убивает приложения (на переднем плане их убить нельзя). */
+    private void goHomeThenKill(List<String> pkgs, final boolean comeBack) {
+        final Context app = getApplicationContext();
+        final List<String> list = new ArrayList<>(pkgs);
+        try {
+            startActivity(homeIntent());
+        } catch (Exception ignored) {
+            // нет главного экрана — всё равно попробуем убить
+        }
+        final Handler h = new Handler(Looper.getMainLooper());
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                for (String p : list) {
+                    RecentsRepo.kill(app, p);
+                }
+            }
+        }, 700);
+        h.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                for (String p : list) {
+                    RecentsRepo.kill(app, p);
+                }
+            }
+        }, 1500);
+        if (comeBack) {
+            h.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Intent i = new Intent(app, MainActivity.class);
+                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        app.startActivity(i);
+                    } catch (Exception ignored) {
+                        // не дали открыть из фона — список откроется кнопкой
+                    }
+                }
+            }, 1000);
+        }
+    }
+
+    private Intent homeIntent() {
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        ResolveInfo ri = getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+        if (ri != null && ri.activityInfo != null && !"android".equals(ri.activityInfo.packageName)) {
+            home.setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name));
+        }
+        home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return home;
     }
 
     private void openUsageSettings() {
