@@ -117,6 +117,8 @@ public class MainActivity extends Activity {
         entries.clear();
         entries.addAll(RecentsRepo.load(this));
         if (entries.isEmpty()) {
+            Toast.makeText(this, "Список пуст — откройте несколько приложений",
+                    Toast.LENGTH_LONG).show();
             leave();
             return;
         }

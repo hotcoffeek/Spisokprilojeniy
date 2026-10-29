@@ -28,6 +28,15 @@ public class KeyService extends AccessibilityService {
     static volatile boolean assigning = false;
     static volatile boolean connected = false;
 
+    /** Экран настройки узнаёт о результате назначения кнопки. */
+    interface Listener {
+        void onKeyAssigned(int keyCode);
+
+        void onKeyRejected();
+    }
+
+    static volatile Listener listener;
+
     private final Set<String> ignore = new HashSet<>();
 
     @Override
@@ -81,8 +90,31 @@ public class KeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        if (assigning) {
+            // Ловим кнопку здесь: прошивка может забрать её (например, LIVE TV),
+            // и до экрана настройки она не дойдёт.
+            if (code == KeyEvent.KEYCODE_BACK) {
+                return false;
+            }
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                Listener l = listener;
+                if (isForbidden(code)) {
+                    if (l != null) {
+                        l.onKeyRejected();
+                    }
+                } else {
+                    setHotkey(this, code);
+                    assigning = false;
+                    if (l != null) {
+                        l.onKeyAssigned(code);
+                    }
+                }
+            }
+            return true;
+        }
         int key = getHotkey(this);
-        if (assigning || key == 0 || event.getKeyCode() != key) {
+        if (key == 0 || code != key) {
             return false;
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
@@ -107,6 +139,28 @@ public class KeyService extends AccessibilityService {
     }
 
     // ------------------------------------------------------------- настройки
+
+    /** Кнопки, которые нельзя назначать: без них не поработать с пультом. */
+    static boolean isForbidden(int k) {
+        switch (k) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_HOME:
+            case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_VOLUME_UP:
+            case KeyEvent.KEYCODE_VOLUME_DOWN:
+            case KeyEvent.KEYCODE_VOLUME_MUTE:
+            case KeyEvent.KEYCODE_POWER:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     static int getHotkey(Context ctx) {
         return ctx.getSharedPreferences(SETTINGS, Context.MODE_PRIVATE).getInt(KEY_HOTKEY, 0);

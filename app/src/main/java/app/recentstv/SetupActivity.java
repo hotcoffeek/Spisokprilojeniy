@@ -41,6 +41,19 @@ public class SetupActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        KeyService.listener = new KeyService.Listener() {
+            @Override
+            public void onKeyAssigned(int keyCode) {
+                capturing = false;
+                update();
+            }
+
+            @Override
+            public void onKeyRejected() {
+                keyStatus.setText("Эта кнопка не подходит — нажмите другую");
+                keyStatus.setTextColor(RED);
+            }
+        };
         update();
         svcBtn.requestFocus();
     }
@@ -48,6 +61,7 @@ public class SetupActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        KeyService.listener = null;
         stopCapture();
     }
 
@@ -76,6 +90,10 @@ public class SetupActivity extends Activity {
     }
 
     private void startCapture() {
+        if (!KeyService.isEnabled(this)) {
+            Toast.makeText(this, "Сначала включите службу (шаг 1)", Toast.LENGTH_LONG).show();
+            return;
+        }
         capturing = true;
         KeyService.assigning = true;
         update();
@@ -86,27 +104,6 @@ public class SetupActivity extends Activity {
         KeyService.assigning = false;
     }
 
-    private boolean isForbidden(int k) {
-        switch (k) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-            case KeyEvent.KEYCODE_NUMPAD_ENTER:
-            case KeyEvent.KEYCODE_HOME:
-            case KeyEvent.KEYCODE_ESCAPE:
-            case KeyEvent.KEYCODE_VOLUME_UP:
-            case KeyEvent.KEYCODE_VOLUME_DOWN:
-            case KeyEvent.KEYCODE_VOLUME_MUTE:
-            case KeyEvent.KEYCODE_POWER:
-                return true;
-            default:
-                return false;
-        }
-    }
-
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (capturing) {
@@ -115,7 +112,7 @@ public class SetupActivity extends Activity {
                 if (k == KeyEvent.KEYCODE_BACK) {
                     stopCapture();
                     update();
-                } else if (isForbidden(k)) {
+                } else if (KeyService.isForbidden(k)) {
                     keyStatus.setText("Эта кнопка не подходит — нажмите другую");
                     keyStatus.setTextColor(RED);
                 } else {
