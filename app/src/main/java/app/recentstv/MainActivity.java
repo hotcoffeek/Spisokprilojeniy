@@ -58,8 +58,6 @@ public class MainActivity extends Activity {
 
     private HorizontalScrollView scroll;
     private LinearLayout row;
-    private LinearLayout permBox;
-    private TextView permBtn;
     private View closeAllBtn;
     private int lastFocusIndex = 0;
     private ValueAnimator scrollAnim;
@@ -67,27 +65,52 @@ public class MainActivity extends Activity {
     /** Приложение, открытое под списком (его нельзя убить, пока оно на экране). */
     private String behindPkg;
 
+    /** Нужны службе: открыт ли список сейчас (повторное нажатие кнопки закрывает его). */
+    static MainActivity instance;
+    static volatile boolean visible = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instance = this;
         setContentView(buildUi());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        visible = true;
         leaving = false;
         refresh();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        visible = false;
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (instance == this) {
+            instance = null;
+        }
     }
 
     // ------------------------------------------------------------------ данные
 
     private void refresh() {
-        if (!RecentsRepo.hasUsageAccess(this)) {
-            showPermission();
+        if (!RecentsRepo.isReady(this)) {
+            // Ничего не настроено — сначала экран настройки.
+            try {
+                startActivity(new Intent(this, SetupActivity.class));
+            } catch (Exception ignored) {
+                // нет экрана настройки — просто выходим
+            }
+            leave();
             return;
         }
-        permBox.setVisibility(View.GONE);
         scroll.setVisibility(View.VISIBLE);
         closeAllBtn.setVisibility(View.VISIBLE);
         behindPkg = RecentsRepo.behindPackage(this);
@@ -145,20 +168,6 @@ public class MainActivity extends Activity {
         leaving = true;
         finish();
         overridePendingTransition(0, 0);
-    }
-
-    private void showPermission() {
-        entries.clear();
-        row.removeAllViews();
-        scroll.setVisibility(View.GONE);
-        closeAllBtn.setVisibility(View.GONE);
-        permBox.setVisibility(View.VISIBLE);
-        permBox.post(new Runnable() {
-            @Override
-            public void run() {
-                permBtn.requestFocus();
-            }
-        });
     }
 
     // ---------------------------------------------------------------- действия
@@ -371,16 +380,6 @@ public class MainActivity extends Activity {
         return home;
     }
 
-    private void openUsageSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
-        } catch (Exception ex) {
-            Toast.makeText(this,
-                    "На этой приставке нет такого экрана — выдайте доступ командой ADB",
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
     // --------------------------------------------------------- плавная прокрутка
 
     private int scrollTarget(View v) {
@@ -457,12 +456,6 @@ public class MainActivity extends Activity {
         scroll.addView(row, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        permBox = buildPermissionBox();
-        permBox.setVisibility(View.GONE);
-        mid.addView(permBox, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER));
-
         // Нижняя кнопка «закрыть всё»
         closeAllBtn = new CloseX(this);
         closeAllBtn.setOnClickListener(new View.OnClickListener() {
@@ -491,60 +484,6 @@ public class MainActivity extends Activity {
         content.addView(closeAllBtn, btnLp);
 
         return rootFrame;
-    }
-
-    private LinearLayout buildPermissionBox() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER_HORIZONTAL);
-
-        TextView h = text("Нужен доступ к статистике использования", 28, Color.WHITE, true);
-        h.setGravity(Gravity.CENTER);
-        box.addView(h);
-
-        TextView d = text("Без него приложение не знает, какие программы вы запускали.\n"
-                        + "Выполните на компьютере одну команду (приставка подключена по ADB):",
-                18, 0xCCFFFFFF, false);
-        d.setGravity(Gravity.CENTER);
-        d.setLineSpacing(0f, 1.2f);
-        LinearLayout.LayoutParams dLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        dLp.topMargin = dp(14);
-        box.addView(d, dLp);
-
-        TextView cmd = text("adb shell appops set " + getPackageName() + " GET_USAGE_STATS allow",
-                18, 0xFFFFFFFF, false);
-        cmd.setTypeface(Typeface.MONOSPACE);
-        cmd.setPadding(dp(20), dp(12), dp(20), dp(12));
-        GradientDrawable cmdBg = new GradientDrawable();
-        cmdBg.setCornerRadius(dp(12));
-        cmdBg.setColor(0x4D000000);
-        cmd.setBackground(cmdBg);
-        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cLp.topMargin = dp(16);
-        box.addView(cmd, cLp);
-
-        TextView after = text("После выполнения вернитесь сюда — список обновится сам.",
-                16, 0x99FFFFFF, false);
-        LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        aLp.topMargin = dp(14);
-        box.addView(after, aLp);
-
-        permBtn = makeButton("Открыть настройки доступа", ACCENT_BLUE);
-        permBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openUsageSettings();
-            }
-        });
-        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bLp.topMargin = dp(24);
-        box.addView(permBtn, bLp);
-
-        return box;
     }
 
     private View makeTile(final AppEntry entry) {

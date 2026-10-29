@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Список приложений</string>
+    <string name="setup_label">Список приложений: настройка</string>
+    <string name="service_desc">Открывает список приложений по выбранной кнопке пульта и запоминает, какие приложения запускались. Содержимое экрана не читается.</string>
 </resources>

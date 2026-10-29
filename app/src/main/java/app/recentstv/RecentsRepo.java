@@ -57,6 +57,11 @@ final class RecentsRepo {
         return mode == AppOpsManager.MODE_ALLOWED;
     }
 
+    /** Есть ли чем собирать список: служба включена или выдан доступ к статистике. */
+    static boolean isReady(Context ctx) {
+        return KeyService.isEnabled(ctx) || hasUsageAccess(ctx);
+    }
+
     @SuppressWarnings("deprecation")
     static List<AppEntry> load(Context ctx) {
         List<AppEntry> out = new ArrayList<>();
@@ -70,13 +75,10 @@ final class RecentsRepo {
         long boot = now - SystemClock.elapsedRealtime();
         long begin = Math.max(boot, now - WINDOW_MS);
 
-        UsageEvents events = usm.queryEvents(begin, now);
-        if (events == null) {
-            return out;
-        }
         Map<String, Long> last = new HashMap<>();
+        UsageEvents events = hasUsageAccess(ctx) ? usm.queryEvents(begin, now) : null;
         UsageEvents.Event ev = new UsageEvents.Event();
-        while (events.hasNextEvent()) {
+        while (events != null && events.hasNextEvent()) {
             events.getNextEvent(ev);
             if (ev.getEventType() != UsageEvents.Event.MOVE_TO_FOREGROUND) {
                 continue;
@@ -86,6 +88,17 @@ final class RecentsRepo {
             Long prev = last.get(p);
             if (prev == null || t > prev) {
                 last.put(p, t);
+            }
+        }
+
+        // Приложения, замеченные службой специальных возможностей.
+        for (Map.Entry<String, Long> t : Tracker.all(ctx).entrySet()) {
+            if (t.getValue() < begin) {
+                continue;
+            }
+            Long prev = last.get(t.getKey());
+            if (prev == null || t.getValue() > prev) {
+                last.put(t.getKey(), t.getValue());
             }
         }
 
@@ -142,6 +155,9 @@ final class RecentsRepo {
      */
     @SuppressWarnings("deprecation")
     static String behindPackage(Context ctx) {
+        if (Tracker.current != null) {
+            return Tracker.current;
+        }
         UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
         if (usm == null) {
             return null;
