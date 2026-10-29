@@ -135,6 +135,45 @@ final class RecentsRepo {
         return out;
     }
 
+    /**
+     * Приложение, которое сейчас открыто «под» нами (например, YouTube, поверх которого
+     * показан список). Такое приложение нельзя убить, пока оно на экране.
+     * Возвращает null, если под нами главный экран или ничего не определилось.
+     */
+    @SuppressWarnings("deprecation")
+    static String behindPackage(Context ctx) {
+        UsageStatsManager usm = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        UsageEvents events = usm.queryEvents(now - 6L * 60 * 60 * 1000, now);
+        if (events == null) {
+            return null;
+        }
+        String topPkg = null;
+        String topCls = null;
+        UsageEvents.Event ev = new UsageEvents.Event();
+        while (events.hasNextEvent()) {
+            events.getNextEvent(ev);
+            String p = ev.getPackageName();
+            if (p == null || p.equals(ctx.getPackageName())) {
+                continue;
+            }
+            int type = ev.getEventType();
+            if (type == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                topPkg = p;
+                topCls = ev.getClassName();
+            } else if (type == 23 /* ACTIVITY_STOPPED */
+                    && p.equals(topPkg)
+                    && java.util.Objects.equals(ev.getClassName(), topCls)) {
+                topPkg = null;
+                topCls = null;
+            }
+        }
+        return topPkg;
+    }
+
     /** Закрывает фоновые процессы приложения (то же, что «убить» в списке недавних). */
     static void kill(Context ctx, String pkg) {
         try {
