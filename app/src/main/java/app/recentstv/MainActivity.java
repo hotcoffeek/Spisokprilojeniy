@@ -91,6 +91,20 @@ public class MainActivity extends Activity {
         visible = false;
     }
 
+    /** Кнопка «меню» на пульте открывает настройку (смена кнопки вызова). */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU && event.getRepeatCount() == 0) {
+            try {
+                startActivity(new Intent(this, SetupActivity.class));
+            } catch (Exception ignored) {
+                // нет экрана настройки
+            }
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -102,8 +116,9 @@ public class MainActivity extends Activity {
     // ------------------------------------------------------------------ данные
 
     private void refresh() {
-        if (!RecentsRepo.isReady(this)) {
-            // Ничего не настроено — сначала экран настройки.
+        if (!RecentsRepo.isReady(this)
+                || (KeyService.isEnabled(this) && KeyService.getHotkey(this) == 0)) {
+            // Не настроено (нет службы или не назначена кнопка) — сначала экран настройки.
             try {
                 startActivity(new Intent(this, SetupActivity.class));
             } catch (Exception ignored) {
