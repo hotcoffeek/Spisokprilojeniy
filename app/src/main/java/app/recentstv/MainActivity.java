@@ -3,7 +3,10 @@ package app.recentstv;
 import android.animation.LayoutTransition;
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -25,8 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Экран «Недавние»: плитки приложений.
- * OK — открыть, ↑ — закрыть выбранное, ↓ — перейти к кнопке «Закрыть всё».
+ * Экран «Список приложений»: плитки приложений.
+ * OK — открыть, ↑ — закрыть выбранное, ↓ — перейти к крестику «закрыть всё».
  */
 public class MainActivity extends Activity {
 
@@ -37,10 +40,9 @@ public class MainActivity extends Activity {
 
     private HorizontalScrollView scroll;
     private LinearLayout row;
-    private TextView emptyText;
     private LinearLayout permBox;
     private TextView permBtn;
-    private TextView closeAllBtn;
+    private View closeAllBtn;
     private int lastFocusIndex = 0;
 
     @Override
@@ -66,6 +68,10 @@ public class MainActivity extends Activity {
         closeAllBtn.setVisibility(View.VISIBLE);
         entries.clear();
         entries.addAll(RecentsRepo.load(this));
+        if (entries.isEmpty()) {
+            leave();
+            return;
+        }
         rebuildRow();
     }
 
@@ -89,17 +95,21 @@ public class MainActivity extends Activity {
     }
 
     private void updateState() {
-        boolean empty = entries.isEmpty();
-        emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
-        scroll.setVisibility(empty ? View.GONE : View.VISIBLE);
-        closeAllBtn.setText(empty ? "Готово" : "×   Закрыть всё");
+        if (entries.isEmpty()) {
+            leave();
+        }
+    }
+
+    /** Список пуст — сразу уходим на главный экран. */
+    private void leave() {
+        finish();
+        overridePendingTransition(0, 0);
     }
 
     private void showPermission() {
         entries.clear();
         row.removeAllViews();
         scroll.setVisibility(View.GONE);
-        emptyText.setVisibility(View.GONE);
         closeAllBtn.setVisibility(View.GONE);
         permBox.setVisibility(View.VISIBLE);
         permBox.post(new Runnable() {
@@ -174,11 +184,10 @@ public class MainActivity extends Activity {
 
     private void closeAll() {
         if (entries.isEmpty()) {
-            finish();
+            leave();
             return;
         }
         int delay = 0;
-        int closed = 0;
         for (int i = 0; i < row.getChildCount(); i++) {
             View t = row.getChildAt(i);
             AppEntry e = (AppEntry) t.getTag();
@@ -188,7 +197,6 @@ public class MainActivity extends Activity {
             e.closing = true;
             RecentsRepo.kill(this, e.pkg);
             RecentsRepo.dismiss(this, e.pkg);
-            closed++;
             t.animate()
                     .translationY(-dp(150))
                     .alpha(0f)
@@ -199,16 +207,12 @@ public class MainActivity extends Activity {
                     .start();
             delay += 45;
         }
-        final int total = closed;
         scroll.postDelayed(new Runnable() {
             @Override
             public void run() {
                 row.removeAllViews();
                 entries.clear();
-                updateState();
-                closeAllBtn.requestFocus();
-                Toast.makeText(MainActivity.this,
-                        "Закрыто приложений: " + total, Toast.LENGTH_SHORT).show();
+                leave();
             }
         }, delay + 280L);
     }
@@ -238,12 +242,6 @@ public class MainActivity extends Activity {
         TextView title = text("Список приложений", 38, Color.WHITE, true);
         content.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        TextView hint = text("OK — открыть      ↑ — закрыть выбранное      ↓ — «Закрыть всё»      Назад — выйти",
-                16, 0x99FFFFFF, false);
-        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintLp.topMargin = dp(6);
-        content.addView(hint, hintLp);
 
         // Средняя часть: плитки / пустое состояние / запрос доступа
         FrameLayout mid = new FrameLayout(this);
@@ -275,15 +273,6 @@ public class MainActivity extends Activity {
         scroll.addView(row, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        emptyText = text("Нет недавних приложений\nОткрытые приложения появятся здесь",
-                24, 0xB3FFFFFF, false);
-        emptyText.setGravity(Gravity.CENTER);
-        emptyText.setLineSpacing(0f, 1.25f);
-        emptyText.setVisibility(View.GONE);
-        mid.addView(emptyText, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER));
-
         permBox = buildPermissionBox();
         permBox.setVisibility(View.GONE);
         mid.addView(permBox, new FrameLayout.LayoutParams(
@@ -291,7 +280,7 @@ public class MainActivity extends Activity {
                 Gravity.CENTER));
 
         // Нижняя кнопка «Закрыть всё»
-        closeAllBtn = makeButton("×   Закрыть всё", ACCENT_RED);
+        closeAllBtn = new CloseX(this);
         closeAllBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -311,8 +300,7 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(dp(72), dp(72));
         btnLp.gravity = Gravity.CENTER_HORIZONTAL;
         btnLp.topMargin = dp(8);
         content.addView(closeAllBtn, btnLp);
@@ -400,13 +388,6 @@ public class MainActivity extends Activity {
         nameLp.topMargin = dp(16);
         tile.addView(name, nameLp);
 
-        TextView closeHint = text("↑  закрыть", 14, 0xFFFF7A7A, true);
-        closeHint.setAlpha(0f);
-        LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hintLp.topMargin = dp(10);
-        tile.addView(closeHint, hintLp);
-
         styleTile(tile, false);
 
         tile.setOnFocusChangeListener(new View.OnFocusChangeListener() {
@@ -454,9 +435,39 @@ public class MainActivity extends Activity {
         g.setColor(focused ? 0x40FFFFFF : 0x1AFFFFFF);
         g.setStroke(dp(focused ? 3 : 1), focused ? 0xFFFFFFFF : 0x22FFFFFF);
         tile.setBackground(g);
-        View closeHint = tile.getChildAt(2);
-        if (closeHint != null) {
-            closeHint.animate().alpha(focused ? 1f : 0f).setDuration(140).start();
+    }
+
+    /** Кнопка «закрыть всё»: просто красивый крестик без круга. */
+    private class CloseX extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        CloseX(android.content.Context ctx) {
+            super(ctx);
+            setFocusable(true);
+            setClickable(true);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeWidth(dp(5));
+        }
+
+        @Override
+        protected void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
+            super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+            float s = gainFocus ? 1.35f : 1f;
+            animate().scaleX(s).scaleY(s).setDuration(140).start();
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            paint.setColor(isFocused() ? ACCENT_RED : 0x99FFFFFF);
+            float w = getWidth();
+            float h = getHeight();
+            float r = Math.min(w, h) * 0.22f;
+            float cx = w / 2f;
+            float cy = h / 2f;
+            c.drawLine(cx - r, cy - r, cx + r, cy + r, paint);
+            c.drawLine(cx - r, cy + r, cx + r, cy - r, paint);
         }
     }
 
