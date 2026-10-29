@@ -190,6 +190,22 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- действия
 
+    /** Усыпляет приставку; Android сам просит телевизор выключиться по HDMI-CEC. */
+    private void powerOff() {
+        if (!KeyService.connected) {
+            Toast.makeText(this, "Включите службу специальных возможностей (настройка)",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        leave();
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                KeyService.sleepNow();
+            }
+        }, 250);
+    }
+
     private void openEntry(AppEntry entry) {
         if (entry.closing) {
             return;
@@ -501,15 +517,14 @@ public class MainActivity extends Activity {
         scroll.addView(row, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Нижняя кнопка «закрыть всё»
-        closeAllBtn = new CloseX(this);
-        closeAllBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                closeAll();
-            }
-        });
-        closeAllBtn.setOnKeyListener(new View.OnKeyListener() {
+        // Нижний ряд: крестик «закрыть всё» и «выключить приставку и телевизор»
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.HORIZONTAL);
+        bottom.setGravity(Gravity.CENTER);
+        bottom.setClipChildren(false);
+        bottom.setClipToPadding(false);
+
+        View.OnKeyListener upToTiles = new View.OnKeyListener() {
             @Override
             public boolean onKey(View v, int keyCode, KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN
@@ -523,10 +538,32 @@ public class MainActivity extends Activity {
                 }
                 return false;
             }
+        };
+
+        closeAllBtn = new CloseX(this, false);
+        closeAllBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                closeAll();
+            }
         });
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(dp(120), dp(68));
-        btnLp.gravity = Gravity.CENTER_HORIZONTAL;
-        content.addView(closeAllBtn, btnLp);
+        closeAllBtn.setOnKeyListener(upToTiles);
+        bottom.addView(closeAllBtn, new LinearLayout.LayoutParams(dp(120), dp(68)));
+
+        View powerBtn = new CloseX(this, true);
+        powerBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                powerOff();
+            }
+        });
+        powerBtn.setOnKeyListener(upToTiles);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(dp(120), dp(68));
+        pLp.leftMargin = dp(12);
+        bottom.addView(powerBtn, pLp);
+
+        content.addView(bottom, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         return rootFrame;
     }
@@ -642,9 +679,11 @@ public class MainActivity extends Activity {
         private final RectF rect = new RectF();
         private float amt = 0f;
         private ValueAnimator anim;
+        private final boolean power;
 
-        CloseX(Context ctx) {
+        CloseX(Context ctx, boolean power) {
             super(ctx);
+            this.power = power;
             setFocusable(true);
             setClickable(true);
             line.setStyle(Paint.Style.STROKE);
@@ -704,8 +743,15 @@ public class MainActivity extends Activity {
 
             line.setColor(lerp(0x99FFFFFF, 0xFFFFFFFF, amt));
             float r = dp(9);
-            c.drawLine(cx - r, cy - r, cx + r, cy + r, line);
-            c.drawLine(cx - r, cy + r, cx + r, cy - r, line);
+            if (power) {
+                // значок питания: дуга с разрывом сверху и чёрточка
+                rect.set(cx - r, cy - r + dp(2), cx + r, cy + r + dp(2));
+                c.drawArc(rect, -60f, 300f, false, line);
+                c.drawLine(cx, cy - r - dp(2), cx, cy - dp(1), line);
+            } else {
+                c.drawLine(cx - r, cy - r, cx + r, cy + r, line);
+                c.drawLine(cx - r, cy + r, cx + r, cy - r, line);
+            }
         }
     }
 

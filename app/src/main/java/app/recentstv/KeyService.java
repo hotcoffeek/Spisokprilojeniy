@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
@@ -27,6 +28,7 @@ public class KeyService extends AccessibilityService {
     /** Включается на экране настройки, пока ждём нажатия новой кнопки. */
     static volatile boolean assigning = false;
     static volatile boolean connected = false;
+    static volatile KeyService instance;
 
     /** Экран настройки узнаёт о результате назначения кнопки. */
     interface Listener {
@@ -43,6 +45,7 @@ public class KeyService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         connected = true;
+        instance = this;
         ignore.clear();
         ignore.add(getPackageName());
         ignore.add("android");
@@ -85,6 +88,7 @@ public class KeyService extends AccessibilityService {
     @Override
     public boolean onUnbind(Intent intent) {
         connected = false;
+        instance = null;
         return super.onUnbind(intent);
     }
 
@@ -139,6 +143,18 @@ public class KeyService extends AccessibilityService {
     }
 
     // ------------------------------------------------------------- настройки
+
+    /**
+     * Усыпляет приставку так же, как кнопка питания: Android при этом сам отправляет
+     * телевизору команду «выключиться» по HDMI-CEC.
+     */
+    static boolean sleepNow() {
+        KeyService s = instance;
+        if (s == null || Build.VERSION.SDK_INT < 28) {
+            return false;
+        }
+        return s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+    }
 
     /** Кнопки, которые нельзя назначать: без них не поработать с пультом. */
     static boolean isForbidden(int k) {
