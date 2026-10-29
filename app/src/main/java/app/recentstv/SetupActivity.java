@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -147,10 +148,19 @@ public class SetupActivity extends Activity {
     // ---------------------------------------------------------------------- UI
 
     private View buildUi() {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setClipChildren(false);
+        scrollView.setClipToPadding(false);
+        scrollView.setFillViewport(true);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(64), dp(44), dp(64), dp(32));
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
+        root.setPadding(dp(64), dp(28), dp(64), dp(28));
+        scrollView.addView(root, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = text("Список приложений", 32, 0xF2FFFFFF);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -179,6 +189,8 @@ public class SetupActivity extends Activity {
 
         LinearLayout btns1 = new LinearLayout(this);
         btns1.setOrientation(LinearLayout.HORIZONTAL);
+        btns1.setClipChildren(false);
+        btns1.setClipToPadding(false);
         svcBtn = button("Открыть настройки службы", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -219,13 +231,15 @@ public class SetupActivity extends Activity {
         c2.addView(keyBtn, k2Lp);
         root.addView(c2, cardLp());
 
-        return root;
+        return scrollView;
     }
 
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(28), dp(22), dp(28), dp(24));
+        c.setClipChildren(false);
+        c.setClipToPadding(false);
+        c.setPadding(dp(28), dp(18), dp(28), dp(22));
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{0x30FFFFFF, 0x12FFFFFF});
         g.setCornerRadius(dp(28));
@@ -237,7 +251,7 @@ public class SetupActivity extends Activity {
     private LinearLayout.LayoutParams cardLp() {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(20);
+        lp.topMargin = dp(16);
         return lp;
     }
 
@@ -253,10 +267,11 @@ public class SetupActivity extends Activity {
     }
 
     private TextView button(String label, View.OnClickListener click) {
-        TextView b = text(label, 18, Color.WHITE);
+        TextView b = text(label, 17, Color.WHITE);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(32), dp(12), dp(32), dp(12));
+        b.setPadding(dp(26), dp(10), dp(26), dp(10));
+        b.setSingleLine(true);
         b.setFocusable(true);
         b.setClickable(true);
         styleButton(b, false);

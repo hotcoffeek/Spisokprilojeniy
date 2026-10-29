@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -340,43 +341,70 @@ public class MainActivity extends Activity {
             // нет главного экрана — всё равно попробуем убить
         }
         final Handler h = new Handler(Looper.getMainLooper());
+        final long start = SystemClock.uptimeMillis();
+        // Убиваем только когда главный экран уже на виду, иначе система на миг
+        // показывает родной лаунчер.
         h.postDelayed(new Runnable() {
             @Override
             public void run() {
-                for (String p : list) {
-                    RecentsRepo.kill(app, p);
-                }
-            }
-        }, 700);
-        h.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                for (String p : list) {
-                    RecentsRepo.kill(app, p);
-                }
-            }
-        }, 1500);
-        if (comeBack) {
-            h.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Intent i = new Intent(app, MainActivity.class);
-                        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        app.startActivity(i);
-                    } catch (Exception ignored) {
-                        // не дали открыть из фона — список откроется кнопкой
+                long waited = SystemClock.uptimeMillis() - start;
+                String cur = Tracker.current;
+                boolean homeShown = cur != null && !list.contains(cur);
+                if ((homeShown && waited > 300) || waited > 1800) {
+                    for (String p : list) {
+                        RecentsRepo.kill(app, p);
                     }
+                    h.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            for (String p : list) {
+                                RecentsRepo.kill(app, p);
+                            }
+                        }
+                    }, 800);
+                    if (comeBack) {
+                        h.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    Intent i = new Intent(app, MainActivity.class);
+                                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    app.startActivity(i);
+                                } catch (Exception ignored) {
+                                    // не дали открыть из фона — список откроется кнопкой
+                                }
+                            }
+                        }, 350);
+                    }
+                } else {
+                    h.postDelayed(this, 100);
                 }
-            }, 1000);
-        }
+            }
+        }, 300);
     }
 
+    /** Главный экран: сначала сторонний лаунчер (Projectivy), чтобы не мелькал родной. */
     private Intent homeIntent() {
         Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
-        ResolveInfo ri = getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
-        if (ri != null && ri.activityInfo != null && !"android".equals(ri.activityInfo.packageName)) {
-            home.setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name));
+        PackageManager pm = getPackageManager();
+        ResolveInfo pick = null;
+        for (ResolveInfo ri : pm.queryIntentActivities(home, 0)) {
+            if (ri.activityInfo == null) {
+                continue;
+            }
+            boolean system = (ri.activityInfo.applicationInfo.flags
+                    & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
+            if (!system && !getPackageName().equals(ri.activityInfo.packageName)) {
+                pick = ri;
+                break;
+            }
+        }
+        if (pick == null) {
+            pick = pm.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+        }
+        if (pick != null && pick.activityInfo != null
+                && !"android".equals(pick.activityInfo.packageName)) {
+            home.setComponent(new ComponentName(pick.activityInfo.packageName, pick.activityInfo.name));
         }
         home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         return home;
